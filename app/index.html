@@ -233,6 +233,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
         <div class="prow" style="border-top:1px solid var(--line);border-bottom:none;padding:9px 2px"><span class="ic">🌱</span><div><div class="k">Carbon impact</div><div class="v" id="rvCo2"></div></div></div>
         <div id="rvNote" style="font-size:12px;color:var(--green);font-weight:700;margin-top:8px;display:none"></div>
       </div>
+      <div id="rvItinerary"></div>
       <button class="btn primary" onclick="startTrip()">▶ Start Trip Now</button>
       <div style="height:10px"></div>
       <button class="btn green" onclick="openSchedule()">📅 Schedule Trip</button>
@@ -586,6 +587,66 @@ function openReview(i){
   if(r.modeKey==='transit'&&r.note)n='🚶 Includes '+r.note+' — you still burn calories on public transport!';
   if(r.modeKey==='scooter')n='🛴 '+scootAvail+' e-scooters available near you right now — zero tailpipe CO₂.';
   note.textContent=n;note.style.display=n?'block':'none';
+  showItinerary(r);
+}
+
+// ---------------- Trip steps / transit itinerary (OpenStreetMap stops) ----------------
+function originLabel(){return document.getElementById('curLoc').value.replace(/^📍\s*/,'')||'your location';}
+async function overpassStops(lat,lon){
+  const q=`[out:json][timeout:20];(node(around:1200,${lat},${lon})[highway=bus_stop];node(around:1200,${lat},${lon})[public_transport=platform];node(around:2200,${lat},${lon})[railway=station];node(around:2200,${lat},${lon})[railway=halt];);out body 50;`;
+  const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q)});
+  const d=await r.json();return d.elements||[];
+}
+function pickNearest(els,pt,preferTrain){
+  let best=null,bd=1e9;
+  els.forEach(e=>{if(e.lat==null)return;const tg=e.tags||{};const nm=tg.name||tg['name:en'];if(!nm)return;
+    const isTrain=tg.railway==='station'||tg.railway==='halt';let dd=haversine(pt,[e.lat,e.lon]);
+    if(preferTrain&&isTrain)dd-=0.25; // gently favour rail when close
+    if(dd<bd){bd=dd;best={name:nm,type:isTrain?'train':'bus',lat:e.lat,lon:e.lon,dist:haversine(pt,[e.lat,e.lon])}}});
+  return best;
+}
+async function nearestStop(pt){try{const els=await overpassStops(pt[0],pt[1]);return pickNearest(els,pt);}catch(e){return null}}
+function addStopMarker(s){const ic=s.type==='train'?'🚉':'🚏';const m=L.marker([s.lat,s.lon],{icon:L.divIcon({className:'',html:`<div style="font-size:20px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))">${ic}</div>`,iconSize:[22,22],iconAnchor:[11,11]})}).addTo(mapReview);if(window._rv)window._rv.push(m);}
+function stepRow(ic,color,title,detail){return `<div class="tlseg"><div class="ic" style="background:${color}">${ic}</div><div class="body"><div class="m">${title}</div><div class="d">${detail}</div></div></div>`;}
+function showItinerary(r){
+  if(r.modeKey==='transit')return showTransitDetail(r);
+  return showSimpleItinerary(r);
+}
+function showSimpleItinerary(r){
+  const t=computeTimes(r.durSec);
+  document.getElementById('rvItinerary').innerHTML=
+    '<div class="sectiontitle">Trip steps</div><div class="tl">'+
+    stepRow('🟢','var(--green)','Depart '+originLabel(),hhmm(t.dep))+
+    stepRow(r.ic,'var(--brand)',r.mode+' · '+r.km.toFixed(1)+' km',r.dur)+
+    stepRow('🔴','var(--danger)','Arrive '+(destName||'destination'),hhmm(t.arr))+
+    '</div>';
+}
+async function showTransitDetail(r){
+  const box=document.getElementById('rvItinerary');
+  box.innerHTML='<div class="sectiontitle">Trip steps</div><div class="acloading">🚏 Finding nearby stops & stations…</div>';
+  const [board,alight]=await Promise.all([nearestStop(fromPt),nearestStop(toPt)]);
+  const t=computeTimes(r.durSec);let cur=new Date(t.dep);
+  const w1=board?Math.max(0.05,haversine(fromPt,[board.lat,board.lon])*1.25):0.4;
+  const w2=alight?Math.max(0.05,haversine([alight.lat,alight.lon],toPt)*1.25):0.4;
+  const w1sec=w1/5*3600, w2sec=w2/5*3600;
+  let ridesec=Math.max(120,r.durSec-w1sec-w2sec);
+  let html='<div class="sectiontitle">Trip steps</div><div class="tl">';
+  html+=stepRow('🚶','var(--walk)','Walk to '+(board?board.name:'nearest stop'),hhmm(cur)+' · '+w1.toFixed(1)+' km · '+Math.round(w1sec/60)+' min');
+  cur=new Date(cur.getTime()+w1sec*1000);const boardTime=hhmm(cur);
+  const rideIcon=board&&board.type==='train'?'🚆':'🚌';
+  const rideColor=board&&board.type==='train'?'var(--ferry)':'var(--bus)';
+  const svc=board?(board.type==='train'?'Train':'Bus'):'Service';
+  html+=stepRow(rideIcon,rideColor,svc+'  '+(board?board.name:'Board')+'  →  '+(alight?alight.name:'Alight'),'Board '+boardTime+' · '+Math.round(ridesec/60)+' min ride');
+  cur=new Date(cur.getTime()+ridesec*1000);const offTime=hhmm(cur);
+  html+=stepRow('🚶','var(--walk)','Walk to '+(destName||'destination'),offTime+' · '+w2.toFixed(1)+' km · '+Math.round(w2sec/60)+' min');
+  cur=new Date(cur.getTime()+w2sec*1000);
+  html+=stepRow('🏁','var(--danger)','Arrive '+(destName||'destination'),hhmm(cur));
+  html+='</div>';
+  html+='<div style="font-size:11px;color:var(--muted);margin-top:6px">🚏 Stops & stations from OpenStreetMap. Exact route number and live timetable need a GTFS transit feed.</div>';
+  box.innerHTML=html;
+  if(board)addStopMarker(board);
+  if(alight)addStopMarker(alight);
+  try{const pts=[fromPt,toPt];if(board)pts.push([board.lat,board.lon]);if(alight)pts.push([alight.lat,alight.lon]);mapReview.fitBounds(pts,{padding:[45,45]});}catch(e){}
 }
 
 // ---------------- Schedule ----------------
