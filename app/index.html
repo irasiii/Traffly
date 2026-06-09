@@ -30,7 +30,8 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
 .appbar h1{font-size:18px;margin:0;font-weight:700}
 .iconbtn{width:38px;height:38px;border-radius:50%;border:none;background:transparent;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;color:var(--ink)}
 .iconbtn:active{background:#0000000d}
-#map,#mapR,#mapA{position:absolute;inset:0;z-index:1}
+#mapA,#mapDetail{position:absolute;inset:0;z-index:1}
+.gmap{position:absolute;inset:0;width:100%;height:100%;border:0;z-index:1}
 .maphud{position:absolute;top:max(14px,env(safe-area-inset-top));left:0;right:0;display:flex;justify-content:space-between;padding:6px 14px 0;z-index:30;pointer-events:none}
 .pill{background:rgba(255,255,255,.95);backdrop-filter:blur(6px);border-radius:16px;padding:8px 12px;box-shadow:0 4px 14px rgba(0,0,0,.12);font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;pointer-events:auto}
 .pill .t{color:var(--muted);font-weight:600;font-size:11px;display:block;line-height:1}
@@ -133,16 +134,15 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
 .toast{position:fixed;bottom:calc(26px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:11px 18px;border-radius:24px;font-size:13px;font-weight:600;z-index:120;opacity:0;transition:.3s;pointer-events:none;white-space:nowrap;max-width:90%}
 .toast.show{opacity:1}
 .pad{padding:16px}
-.userdot{width:18px;height:18px;background:var(--brand);border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px rgba(23,105,255,.4),0 2px 6px rgba(0,0,0,.4)}
 .installbtn{position:fixed;left:16px;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));background:#111;color:#fff;border:none;border-radius:14px;padding:14px;font-weight:700;font-size:15px;z-index:130;display:none}
 .installbtn.show{display:block}
 </style>
 </head>
 <body>
 <div id="app">
-  <!-- HOME -->
+  <!-- HOME — Google Map landing -->
   <div class="view active" id="v-home">
-    <div id="map"></div>
+    <iframe id="gmapHome" class="gmap" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allow="geolocation"></iframe>
     <div class="maphud">
       <button class="menuFab" onclick="openDrawer()">☰</button>
       <div style="display:flex;gap:8px">
@@ -161,7 +161,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
 
   <!-- PLAN -->
   <div class="view" id="v-plan">
-    <div id="mapR"></div>
+    <iframe id="gmapPlan" class="gmap" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
     <div class="maphud"><button class="menuFab" onclick="go('home')">←</button></div>
     <div class="sheet">
       <div class="grab"></div>
@@ -193,10 +193,10 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
     </div>
   </div>
 
-  <!-- ROUTES -->
+  <!-- ROUTES — Google directions from -> to -->
   <div class="view" id="v-routes">
     <div class="appbar"><button class="iconbtn" onclick="go('plan')">←</button><h1>Choose a Route</h1></div>
-    <div style="height:36%;position:relative"><div id="mapRoutes" style="position:absolute;inset:0"></div></div>
+    <div style="height:36%;position:relative"><iframe id="gmapRoutes" class="gmap" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
     <div class="scroll pad" style="margin-top:-18px;background:var(--bg);border-radius:22px 22px 0 0;position:relative;z-index:5">
       <div id="routeSummary" style="font-size:13px;color:var(--muted);margin-bottom:10px"></div>
       <div class="seg" id="modeSeg">
@@ -319,7 +319,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
 </div>
 
 <script>
-// ---------------- Service worker (installability) ----------------
+// ---------------- Service worker ----------------
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW',e)));
 }
@@ -334,7 +334,7 @@ function go(v){
   document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
   document.getElementById(views[v]).classList.add('active');
   const fix=(m)=>m&&setTimeout(()=>m.invalidateSize(),80);
-  if(v==='home')fix(map); if(v==='plan')fix(mapR); if(v==='routes')fix(mapRoutes); if(v==='active')fix(mapA); if(v==='details')fix(mapDetail);
+  if(v==='active')fix(mapA); if(v==='details')fix(mapDetail);
 }
 function nav(v){closeDrawer();go(v)}
 function openDrawer(){document.getElementById('drawer').classList.add('open')}
@@ -342,13 +342,23 @@ function closeDrawer(){document.getElementById('drawer').classList.remove('open'
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200)}
 function clearField(id){document.getElementById(id).value='';if(id==='destLoc')destCoords=null;hideAC(id)}
 
-// ---------------- Maps ----------------
+// ---------------- Google Maps (keyless embed) ----------------
 const BNE=[-27.4705,153.0260];
+function gmapPoint(lat,lon,z){return `https://maps.google.com/maps?q=${lat},${lon}&z=${z||16}&output=embed`}
+function gmapDir(from,to){return `https://maps.google.com/maps?saddr=${from[0]},${from[1]}&daddr=${to[0]},${to[1]}&output=embed`}
+function setSrc(id,url){const el=document.getElementById(id);if(el&&el.src!==url)el.src=url}
+function setHomeMap(lat,lon){setSrc('gmapHome',gmapPoint(lat,lon,16))}
+function setPlanMap(lat,lon,z){setSrc('gmapPlan',gmapPoint(lat,lon,z||15))}
+
+// ---------------- Leaflet maps (active trip + trip detail only) ----------------
 const tiles=()=>L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
 function mkMap(id){const m=L.map(id,{zoomControl:false,attributionControl:false}).setView(BNE,14);tiles().addTo(m);return m}
-let map,mapR,mapRoutes,mapA,mapDetail,userMarker,userCircle,userCoords=null,destCoords=null;
+let mapA,mapDetail,userCoords=null,destCoords=null;
 window.addEventListener('load',()=>{
-  map=mkMap('map');mapR=mkMap('mapR');mapRoutes=mkMap('mapRoutes');mapA=mkMap('mapA');mapDetail=mkMap('mapDetail');
+  // Google maps default to Brisbane until GPS resolves
+  setHomeMap(BNE[0],BNE[1]);setPlanMap(BNE[0],BNE[1],14);
+  // Leaflet only for active tracking + trip detail
+  mapA=mkMap('mapA');mapDetail=mkMap('mapDetail');
   L.polyline([[-27.61,152.76],[-27.55,152.86],[-27.50,152.95],[-27.47,153.02]],{color:'#ff7a00',weight:5}).addTo(mapDetail);
   mapDetail.fitBounds([[-27.61,152.76],[-27.47,153.02]],{padding:[30,30]});
   locateMe(false);
@@ -356,23 +366,17 @@ window.addEventListener('load',()=>{
 });
 
 // ---------------- GPS current location ----------------
-function setUser(lat,lon,acc){
-  userCoords=[lat,lon];const ll=[lat,lon];
-  if(!userMarker){
-    userMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="userdot"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
-    userCircle=L.circle(ll,{radius:acc||40,color:'#1769ff',weight:1,fillColor:'#1769ff',fillOpacity:.12}).addTo(map);
-  }else{userMarker.setLatLng(ll);userCircle.setLatLng(ll).setRadius(acc||40)}
-}
 function locateMe(recenter){
   if(!navigator.geolocation){toast('GPS not supported on this device');return}
   if(recenter)toast('Finding your location…');
   navigator.geolocation.getCurrentPosition(p=>{
-    const {latitude,longitude,accuracy}=p.coords;
-    setUser(latitude,longitude,accuracy);
-    if(recenter||!map._loadedOnce){map.setView([latitude,longitude],16);map._loadedOnce=true}
+    const {latitude,longitude}=p.coords;
+    userCoords=[latitude,longitude];
+    setHomeMap(latitude,longitude);
+    setPlanMap(latitude,longitude,15);
     reverseGeocode(latitude,longitude);
     fetchWeather(latitude,longitude);
-    if(!window._watch)window._watch=navigator.geolocation.watchPosition(q=>setUser(q.coords.latitude,q.coords.longitude,q.coords.accuracy),()=>{},{enableHighAccuracy:true,maximumAge:5000});
+    if(!window._watch)window._watch=navigator.geolocation.watchPosition(q=>{userCoords=[q.coords.latitude,q.coords.longitude]},()=>{},{enableHighAccuracy:true,maximumAge:8000});
   },err=>{
     document.getElementById('nearLabel').textContent='Enable GPS';
     if(recenter)toast('Location blocked — allow it in settings');
@@ -388,7 +392,7 @@ function reverseGeocode(lat,lon){
       const cur=document.getElementById('curLoc');if(!cur.value){cur.value='📍 '+label;}
     }).catch(()=>{document.getElementById('nearLabel').textContent='You'});
 }
-// ---------------- Weather (Open-Meteo, no key) ----------------
+// ---------------- Weather ----------------
 function fetchWeather(lat,lon){
   fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code`)
     .then(r=>r.json()).then(d=>{
@@ -400,7 +404,7 @@ function fetchWeather(lat,lon){
 }
 function wxEmoji(code){if(code==null)return '⛅';if(code===0)return '☀️';if(code<=3)return '⛅';if(code<=48)return '🌫️';if(code<=67)return '🌧️';if(code<=77)return '🌨️';if(code<=82)return '🌦️';if(code<=99)return '⛈️';return '⛅'}
 
-// ---------------- Smart address autocomplete (Photon) ----------------
+// ---------------- Smart address autocomplete ----------------
 function typeIcon(v){const m={street:'🛣️',residential:'🏘️',primary:'🛣️',secondary:'🛣️',tertiary:'🛣️',house:'🏠',hospital:'🏥',school:'🏫',university:'🎓',supermarket:'🛒',station:'🚉',bus_stop:'🚌',cafe:'☕',restaurant:'🍽️',park:'🌳'};return m[v]||'📍'}
 function fmtAddr(p){
   let main = p.name || p.street || 'Unknown';
@@ -441,22 +445,16 @@ function renderAC(inputId,feats){
       const input=document.getElementById(inputId);
       input.value=a.main+(a.sec?', '+a.sec.split(',')[0]:'');
       const c=f.geometry.coordinates;
-      if(inputId==='destLoc'){destCoords=[c[1],c[0]];}else{userCoords=[c[1],c[0]];}
-      hideAC(inputId);previewDest(c[1],c[0]);
+      if(inputId==='destLoc'){destCoords=[c[1],c[0]];setPlanMap(c[1],c[0],15);}else{userCoords=[c[1],c[0]];setPlanMap(c[1],c[0],15);}
+      hideAC(inputId);
     };
     box.appendChild(el);
   });
   box.classList.add('show');
 }
 function hideAC(id){const b=document.getElementById('ac-'+id);if(b)b.classList.remove('show')}
-function previewDest(lat,lon){
-  if(!mapR)return;
-  if(window._destM)mapR.removeLayer(window._destM);
-  window._destM=L.marker([lat,lon]).addTo(mapR);
-  if(userCoords)mapR.fitBounds([userCoords,[lat,lon]],{padding:[60,60]});else mapR.setView([lat,lon],15);
-}
 
-// ---------------- Timing (Now/Depart/Arrive) ----------------
+// ---------------- Timing ----------------
 let timing='now';
 const pad=n=>String(n).padStart(2,'0');
 function setTiming(t){
@@ -477,18 +475,16 @@ document.addEventListener('input',e=>{if(e.target.id==='tripDate'||e.target.id==
 function prettyDT(){const dv=document.getElementById('tripDate').value,tv=document.getElementById('tripTime').value;if(!dv||!tv)return '';const dt=new Date(dv+'T'+tv);return dt.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'})+' · '+dt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
 function updateHint(){const p=prettyDT();if(!p)return;document.getElementById('timingHint').innerHTML=(timing==='depart'?'🚀 Departing ':'🎯 Arriving by ')+p}
 
-// ---------------- Routing (OSRM) with real alternatives ----------------
+// ---------------- Routing (real distance + alternatives) ----------------
 const MODES={
   foot:{mode:'Walking',ic:'🚶',speed:5,kcalPerKm:50},
   bike:{mode:'Cycling',ic:'🚲',speed:16,kcalPerKm:30},
   driving:{mode:'Drive / Bus',ic:'🚗',speed:40,kcalPerKm:3}
 };
-const CAR_CO2=0.192; // kg CO₂ per km — average petrol car baseline
+const CAR_CO2=0.192;
 let selectedMode='driving';
 let fromPt=null,toPt=null;
-let baseRoutes=[];            // real road alternatives: {km,geom,driveSec}
-let routeData=[],selRoute=0;  // current mode's routes
-let altLayer=null;
+let baseRoutes=[],routeData=[],selRoute=0;
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.round((s%3600)/60);return h?`${h} h ${m} min`:`${m} min`}
 function haversine(a,b){const R=6371,dLat=(b[0]-a[0])*Math.PI/180,dLon=(b[1]-a[1])*Math.PI/180,la1=a[0]*Math.PI/180,la2=b[0]*Math.PI/180;const x=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 
@@ -507,18 +503,18 @@ async function findRoutes(){
   toPt=destCoords||await geocodeOne(destInput);
   if(!toPt){toast('Could not locate that destination');btn.textContent='Find Routes';btn.disabled=false;return}
   destCoords=toPt;
+  // Google Maps directions from current location -> destination
+  setSrc('gmapRoutes',gmapDir(fromPt,toPt));
   let summary=(document.getElementById('curLoc').value.replace(/^📍\s*/,'')||'My location')+' → '+destInput;
   if(timing!=='now'){const p=prettyDT();if(p)summary+=' · '+(timing==='depart'?'Depart ':'Arrive ')+p}
   document.getElementById('routeSummary').textContent=summary;
-  go('routes');setTimeout(()=>mapRoutes.invalidateSize(),100);
-  document.getElementById('routeList').innerHTML='<div class="acloading">Calculating real routes…</div>';
+  go('routes');
+  document.getElementById('routeList').innerHTML='<div class="acloading">Calculating distance &amp; routes…</div>';
   baseRoutes=await osrmBase(fromPt,toPt);
   if(!baseRoutes.length){const km=haversine(fromPt,toPt)*1.3;baseRoutes=[{km,geom:[fromPt,toPt],driveSec:km/MODES.driving.speed*3600}];toast('Showing straight-line estimate (routing offline)')}
   loadMode(selectedMode);
   btn.textContent='Find Routes';btn.disabled=false;
 }
-
-// Fetch real alternative routes on the road network (OSRM demo server uses driving profile)
 async function osrmBase(from,to){
   try{
     const url=`https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?alternatives=3&overview=full&geometries=geojson`;
@@ -527,10 +523,7 @@ async function osrmBase(from,to){
     return d.routes.map(rt=>({km:rt.distance/1000,driveSec:rt.duration,geom:rt.geometry.coordinates.map(c=>[c[1],c[0]])}));
   }catch(e){return []}
 }
-
 function setMode(m){selectedMode=m;document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));if(baseRoutes.length)loadMode(m)}
-
-// Build this mode's route cards from the shared real road geometries
 function loadMode(m){
   const M=MODES[m];
   routeData=baseRoutes.map(b=>{
@@ -540,7 +533,6 @@ function loadMode(m){
   }).sort((a,b)=>a.durSec-b.durSec);
   selRoute=0;renderRoutes();
 }
-
 function renderRoutes(){
   const list=document.getElementById('routeList');list.innerHTML='';
   routeData.forEach((r,i)=>{
@@ -556,20 +548,7 @@ function renderRoutes(){
   const sr=routeData[selRoute];
   const hd=document.getElementById('routeHeadline');hd.style.display='block';
   hd.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:24px;font-weight:800">${sr.km.toFixed(1)} km</div><div style="font-size:13px;color:var(--muted)">${sr.dur} · ${sr.mode.toLowerCase()}</div></div><div style="font-size:30px">${sr.ic}</div></div>`;
-  drawAlternatives();
 }
-
-function drawAlternatives(){
-  if(altLayer)mapRoutes.removeLayer(altLayer);
-  altLayer=L.layerGroup().addTo(mapRoutes);
-  routeData.forEach((r,i)=>{if(i!==selRoute)L.polyline(r.geom,{color:'#9aa3b2',weight:4,opacity:.7}).addTo(altLayer).on('click',()=>{selRoute=i;renderRoutes()})});
-  const sel=routeData[selRoute];
-  L.polyline(sel.geom,{color:'#1769ff',weight:7,opacity:.95}).addTo(altLayer);
-  L.circleMarker(fromPt,{radius:7,color:'#fff',weight:3,fillColor:'#16a34a',fillOpacity:1}).addTo(altLayer);
-  L.circleMarker(toPt,{radius:7,color:'#fff',weight:3,fillColor:'#e5343d',fillOpacity:1}).addTo(altLayer);
-  try{mapRoutes.fitBounds(L.polyline(sel.geom).getBounds(),{padding:[40,40]})}catch(e){}
-}
-
 function openInGMaps(){
   if(!toPt){toast('Find a route first');return}
   const mode={foot:'walking',bike:'bicycling',driving:'driving'}[selectedMode];
@@ -577,7 +556,7 @@ function openInGMaps(){
   window.open(url,'_blank');
 }
 
-// ---------------- Active trip ----------------
+// ---------------- Active trip (Leaflet live tracking) ----------------
 let trip=null;
 function startTrip(){
   const r=routeData[selRoute];
@@ -589,6 +568,7 @@ function startTrip(){
   const geom=r.geom||(destCoords&&userCoords?[userCoords,destCoords]:[BNE,[BNE[0]+0.02,BNE[1]+0.02]]);
   window._aLine=L.polyline(geom,{color:'#1769ff',weight:6}).addTo(mapA);
   mapA.fitBounds(window._aLine.getBounds(),{padding:[50,50]});
+  const moveM=L.marker(geom[0],{icon:L.divIcon({className:'',html:'<div style="width:18px;height:18px;background:#1769ff;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px rgba(23,105,255,.4)"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(mapA);
   let sec=0,dist=0,kcal=0,co2=0,idx=0;const per=r.kcal/(r.km||1);
   clearInterval(trip);
   trip=setInterval(()=>{
@@ -620,7 +600,6 @@ function buildTimeline(){const c=document.getElementById('timeline');c.innerHTML
 const MONTHS=['J','F','M','A','M','J','J','A','S','O','N','D'];
 function buildBars(){const c=document.getElementById('bars');c.innerHTML='';MONTHS.forEach((m,i)=>{const walk=10+((i*7)%30),micro=5+((i*5)%18),bus=8+((i*11)%25),car=4+((i*3)%14);const col=document.createElement('div');col.className='col';col.innerHTML=`<div class="lab">${m}</div><div class="bseg" style="height:${car}px;background:var(--car)"></div><div class="bseg" style="height:${bus}px;background:var(--bus)"></div><div class="bseg" style="height:${micro}px;background:var(--micro)"></div><div class="bseg" style="height:${walk}px;background:var(--walk)"></div>`;c.appendChild(col)})}
 
-// init autocomplete
 attachAC('curLoc');attachAC('destLoc');
 </script>
 </body>
