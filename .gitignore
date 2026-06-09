@@ -1,0 +1,16 @@
+# Secrets — never commit
+token
+*.token
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.qodo/
+.DS_Store
+Thumbs.db
+
+# Node (for future Flutter/JS tooling)
+node_modules/
+dist/
+build/

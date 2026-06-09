@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1769ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Travelly">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Travelly</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --brand:#1769ff;--brand-dark:#0b3fae;--bg:#f3f4f8;--card:#fff;--ink:#1a1c22;
+  --muted:#6b7280;--line:#e7e8ee;--green:#16a34a;--danger:#e5343d;--chip:#eef2ff;
+  --ferry:#1769ff;--walk:#16a34a;--bus:#f59e0b;--car:#ef4444;--micro:#14b8a6;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);overscroll-behavior:none}
+#app{position:relative;width:100%;height:100%;overflow:hidden}
+.view{position:absolute;inset:0;display:none;flex-direction:column}
+.view.active{display:flex;animation:fade .22s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.scroll::-webkit-scrollbar{display:none}
+.appbar{display:flex;align-items:center;gap:12px;padding:max(14px,env(safe-area-inset-top)) 16px 14px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.appbar h1{font-size:18px;margin:0;font-weight:700}
+.iconbtn{width:38px;height:38px;border-radius:50%;border:none;background:transparent;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;color:var(--ink)}
+.iconbtn:active{background:#0000000d}
+#map,#mapR,#mapA{position:absolute;inset:0;z-index:1}
+.maphud{position:absolute;top:max(14px,env(safe-area-inset-top));left:0;right:0;display:flex;justify-content:space-between;padding:6px 14px 0;z-index:30;pointer-events:none}
+.pill{background:rgba(255,255,255,.95);backdrop-filter:blur(6px);border-radius:16px;padding:8px 12px;box-shadow:0 4px 14px rgba(0,0,0,.12);font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;pointer-events:auto}
+.pill .t{color:var(--muted);font-weight:600;font-size:11px;display:block;line-height:1}
+.pill .b{font-size:15px;font-weight:700}
+.menuFab{width:42px;height:42px;border-radius:14px;background:rgba(255,255,255,.95);box-shadow:0 4px 14px rgba(0,0,0,.12);border:none;font-size:20px;cursor:pointer;pointer-events:auto}
+.locFab{position:absolute;right:14px;z-index:35;width:46px;height:46px;border-radius:50%;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.18);border:none;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:26px 26px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.18);z-index:40;padding:10px 18px calc(22px + env(safe-area-inset-bottom));max-height:78%;display:flex;flex-direction:column}
+.sheet .inner{overflow-y:auto}
+.sheet .inner::-webkit-scrollbar{display:none}
+.grab{width:42px;height:5px;border-radius:3px;background:#d7d9e2;margin:6px auto 14px;flex:0 0 auto}
+.sheet h2{margin:0 0 3px;font-size:20px}
+.sheet .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.search{display:flex;align-items:center;gap:10px;background:#f1f2f7;border-radius:14px;padding:13px 14px;color:var(--muted);font-size:15px;cursor:pointer}
+.field{display:flex;align-items:center;gap:11px;background:#f1f2f7;border-radius:14px;padding:11px 14px;margin-bottom:9px;position:relative}
+.field .dot{width:14px;height:14px;border-radius:50%;flex:0 0 auto}
+.field input{border:none;background:transparent;outline:none;font-size:15px;flex:1;color:var(--ink);min-width:0}
+.field .clear{color:var(--muted);cursor:pointer;font-size:16px}
+.dot.cur{background:#fff;border:4px solid var(--brand)}
+.dot.dest{background:var(--danger)}
+/* autocomplete dropdown */
+.acwrap{position:relative}
+.aclist{position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border-radius:14px;box-shadow:0 12px 34px rgba(0,0,0,.18);z-index:60;overflow:hidden;display:none;max-height:260px;overflow-y:auto}
+.aclist.show{display:block}
+.acitem{display:flex;align-items:center;gap:11px;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--line)}
+.acitem:last-child{border-bottom:none}
+.acitem:active{background:#f1f2f7}
+.acitem .ic{font-size:17px;width:22px;text-align:center;flex:0 0 auto}
+.acitem .main{font-weight:600;font-size:14px;line-height:1.2}
+.acitem .secd{font-size:12px;color:var(--muted);margin-top:2px}
+.acitem .info{min-width:0}
+.acitem .main,.acitem .secd{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acloading{padding:12px 14px;color:var(--muted);font-size:13px}
+.seg{display:flex;background:#eef0f6;border-radius:13px;padding:4px;margin:6px 0 12px}
+.seg button{flex:1;border:none;background:transparent;padding:9px;border-radius:10px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer}
+.seg button.on{background:#fff;color:var(--brand);box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.dtwrap{display:none;gap:10px;margin-bottom:12px}
+.dtwrap.show{display:flex}
+.dtfield{flex:1;display:flex;flex-direction:column;gap:4px}
+.dtfield label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding-left:2px}
+.dtfield input{border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px;font-size:15px;font-family:inherit;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin:-2px 0 12px;display:flex;gap:6px;align-items:center}
+.btn{display:block;width:100%;border:none;border-radius:15px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;text-align:center}
+.btn.primary{background:var(--brand);color:#fff}.btn.primary:active{background:var(--brand-dark)}
+.btn.green{background:var(--green);color:#fff}.btn.danger{background:var(--danger);color:#fff}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.routecard{display:flex;align-items:center;gap:13px;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:14px;margin-bottom:11px;cursor:pointer;transition:.15s}
+.routecard.sel{border-color:var(--brand);box-shadow:0 4px 16px rgba(23,105,255,.18)}
+.routecard .modes{font-size:20px;min-width:50px}
+.routecard .info{flex:1}.routecard .dur{font-weight:700;font-size:16px}
+.routecard .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.badge{display:inline-flex;align-items:center;gap:4px;background:#e9f9ef;color:var(--green);font-size:11px;font-weight:700;border-radius:8px;padding:3px 7px;margin-top:6px}
+.tag{font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;background:var(--chip);color:var(--brand)}
+.livestats{display:flex;justify-content:space-around;background:var(--card);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 4px 16px rgba(0,0,0,.06)}
+.stat{text-align:center}.stat .v{font-size:22px;font-weight:800}
+.stat .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
+.modechip{display:inline-flex;align-items:center;gap:7px;background:var(--chip);color:var(--brand);border-radius:20px;padding:7px 14px;font-weight:700;font-size:14px;margin-bottom:12px}
+.card{background:var(--card);border-radius:16px;padding:15px;margin:0 0 12px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.tripitem{display:flex;align-items:center;gap:13px;background:var(--card);border-radius:16px;padding:14px;margin-bottom:11px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.tripitem .ic{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;flex:0 0 auto}
+.tripitem .info{flex:1}.tripitem .ti{font-weight:700;font-size:15px}
+.tripitem .ts{font-size:12px;color:var(--muted);margin-top:2px}
+.tripitem .tr{font-size:12px;color:var(--muted);text-align:right}
+.tl{position:relative}.tlseg{display:flex;gap:13px;padding:6px 0}
+.tlseg .ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;flex:0 0 auto}
+.tlseg .body{flex:1;border-bottom:1px solid var(--line);padding-bottom:12px}.tlseg:last-child .body{border-bottom:none}
+.tlseg .m{font-weight:700;font-size:14px}.tlseg .d{font-size:12px;color:var(--muted);margin-top:2px}
+.tlseg .bar{height:6px;border-radius:4px;margin-top:7px}.tlseg .co2{font-size:11px;color:var(--green);font-weight:700;margin-top:4px}
+.impactcard{background:linear-gradient(135deg,var(--brand),#3b82f6);color:#fff;border-radius:18px;padding:18px;margin-bottom:14px}
+.impactcard .lab{font-size:12px;opacity:.85;font-weight:600}
+.impactrow{display:flex;justify-content:space-between;margin-top:10px}.impactrow .big{font-size:26px;font-weight:800}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px}
+.legend span{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.bars{display:flex;align-items:flex-end;gap:8px;height:130px;margin-top:14px}
+.bars .col{flex:1;display:flex;flex-direction:column-reverse;gap:2px}
+.bars .col .lab{font-size:9px;color:var(--muted);text-align:center;margin-top:4px}
+.bars .bseg{border-radius:2px}
+.prow{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid var(--line)}
+.prow .ic{width:26px;text-align:center;color:var(--muted);font-size:17px}
+.prow .k{font-size:12px;color:var(--muted)}.prow .v{font-size:15px;font-weight:600}
+.sectiontitle{font-size:13px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 2px 8px}
+.avatar{width:62px;height:62px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700}
+.acc{background:var(--card);border-radius:14px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.acc .q{display:flex;justify-content:space-between;align-items:center;padding:15px;font-weight:600;font-size:14px;cursor:pointer}
+.acc .a{max-height:0;overflow:hidden;transition:.25s;padding:0 15px;color:var(--muted);font-size:13px;line-height:1.55}
+.acc.open .a{max-height:220px;padding:0 15px 15px}.acc.open .chev{transform:rotate(180deg)}
+.chev{transition:.2s;color:var(--muted)}
+.drawer{position:absolute;inset:0;z-index:90;display:none}.drawer.open{display:block}
+.drawer .scrim{position:absolute;inset:0;background:rgba(0,0,0,.4);animation:fade .2s}
+.drawer .panel{position:absolute;top:0;left:0;bottom:0;width:80%;max-width:320px;background:#fff;box-shadow:6px 0 30px rgba(0,0,0,.25);animation:slidein .25s ease;display:flex;flex-direction:column}
+@keyframes slidein{from{transform:translateX(-100%)}to{transform:none}}
+.drawer .head{background:var(--brand);color:#fff;padding:max(34px,env(safe-area-inset-top)) 20px 22px}
+.drawer .head .nm{font-weight:700;font-size:17px;margin-top:10px}.drawer .head .sb{font-size:12px;opacity:.85}
+.drawer .navitem{display:flex;align-items:center;gap:15px;padding:15px 20px;font-size:15px;cursor:pointer;color:var(--ink)}
+.drawer .navitem:active{background:#f1f2f7}.drawer .navitem .i{width:22px;text-align:center;color:var(--muted)}
+.drawer .navitem.signout{color:var(--danger);margin-top:auto;border-top:1px solid var(--line)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:70%;color:var(--muted);gap:10px;text-align:center}
+.empty .e{font-size:48px;opacity:.3}
+.toast{position:fixed;bottom:calc(26px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:11px 18px;border-radius:24px;font-size:13px;font-weight:600;z-index:120;opacity:0;transition:.3s;pointer-events:none;white-space:nowrap;max-width:90%}
+.toast.show{opacity:1}
+.pad{padding:16px}
+.userdot{width:18px;height:18px;background:var(--brand);border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px rgba(23,105,255,.4),0 2px 6px rgba(0,0,0,.4)}
+.installbtn{position:fixed;left:16px;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));background:#111;color:#fff;border:none;border-radius:14px;padding:14px;font-weight:700;font-size:15px;z-index:130;display:none}
+.installbtn.show{display:block}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- HOME -->
+  <div class="view active" id="v-home">
+    <div id="map"></div>
+    <div class="maphud">
+      <button class="menuFab" onclick="openDrawer()">☰</button>
+      <div style="display:flex;gap:8px">
+        <div class="pill"><span>📍</span><div><span class="t">You're near</span><span class="b" id="nearLabel">Locating…</span></div></div>
+        <div class="pill"><span id="wxIcon">⛅</span><div><span class="t" id="wxCity">Weather</span><span class="b" id="wxTemp">—</span></div></div>
+      </div>
+    </div>
+    <button class="locFab" style="bottom:calc(78% + 8px)" onclick="locateMe(true)">📍</button>
+    <div class="sheet" style="max-height:32%">
+      <div class="grab"></div>
+      <h2>Where to Today?</h2>
+      <p class="sub">Plan a sustainable route and earn rewards.</p>
+      <div class="search" onclick="go('plan');setTimeout(()=>document.getElementById('destLoc').focus(),250)"><span>🔎</span><span>Search destination…</span></div>
+    </div>
+  </div>
+
+  <!-- PLAN -->
+  <div class="view" id="v-plan">
+    <div id="mapR"></div>
+    <div class="maphud"><button class="menuFab" onclick="go('home')">←</button></div>
+    <div class="sheet">
+      <div class="grab"></div>
+      <div class="inner">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h2 style="font-size:18px">Plan Journey</h2><span class="iconbtn" onclick="go('home')">✕</span>
+        </div>
+        <div style="height:10px"></div>
+        <div class="acwrap">
+          <div class="field"><span class="dot cur"></span><input id="curLoc" placeholder="Current location" autocomplete="off"><span class="clear" onclick="clearField('curLoc')">✕</span></div>
+          <div class="aclist" id="ac-curLoc"></div>
+        </div>
+        <div class="acwrap">
+          <div class="field"><span class="dot dest"></span><input id="destLoc" placeholder="Destination — type a street (e.g. Warwick Rd)" autocomplete="off"><span class="clear" onclick="clearField('destLoc')">✕</span></div>
+          <div class="aclist" id="ac-destLoc"></div>
+        </div>
+        <div class="seg">
+          <button class="on" data-t="now" onclick="setTiming('now')">Now</button>
+          <button data-t="depart" onclick="setTiming('depart')">Depart</button>
+          <button data-t="arrive" onclick="setTiming('arrive')">Arrive</button>
+        </div>
+        <div class="dtwrap" id="dtwrap">
+          <div class="dtfield"><label id="dtlabel">Depart date</label><input type="date" id="tripDate"></div>
+          <div class="dtfield"><label>Time</label><input type="time" id="tripTime"></div>
+        </div>
+        <div class="hint" id="timingHint">🕓 Leaving now — finding fastest sustainable routes.</div>
+        <button class="btn primary" id="findBtn" onclick="findRoutes()">Find Routes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROUTES -->
+  <div class="view" id="v-routes">
+    <div class="appbar"><button class="iconbtn" onclick="go('plan')">←</button><h1>Choose a Route</h1></div>
+    <div style="height:38%;position:relative"><div id="mapRoutes" style="position:absolute;inset:0"></div></div>
+    <div class="scroll pad" style="margin-top:-18px;background:var(--bg);border-radius:22px 22px 0 0;position:relative;z-index:5">
+      <div id="routeSummary" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
+      <div id="routeList"></div>
+      <button class="btn primary" id="startBtn" disabled onclick="startTrip()">Start Trip</button>
+    </div>
+  </div>
+
+  <!-- ACTIVE -->
+  <div class="view" id="v-active">
+    <div id="mapA"></div>
+    <div class="maphud"><div class="pill"><span style="color:var(--green)">●</span><span>Tracking live</span></div></div>
+    <div class="sheet" style="max-height:42%">
+      <div class="grab"></div>
+      <div class="modechip"><span id="liveModeIc">🚶</span><span id="liveMode">Walking</span></div>
+      <div class="livestats">
+        <div class="stat"><div class="v" id="sTime">0:00</div><div class="l">Time</div></div>
+        <div class="stat"><div class="v" id="sDist">0.0<small style="font-size:12px"> km</small></div><div class="l">Distance</div></div>
+        <div class="stat"><div class="v" id="sKcal">0</div><div class="l">Kcal</div></div>
+        <div class="stat"><div class="v" style="color:var(--green)" id="sCo2">0.00</div><div class="l">kg CO₂</div></div>
+      </div>
+      <button class="btn danger" onclick="finishTrip()">Finish Trip</button>
+    </div>
+  </div>
+
+  <!-- TRIPS -->
+  <div class="view" id="v-trips">
+    <div class="appbar"><button class="iconbtn" onclick="go('home')">←</button><h1>Your Trips</h1></div>
+    <div class="scroll pad" id="tripsList"></div>
+  </div>
+
+  <!-- DETAILS -->
+  <div class="view" id="v-details">
+    <div class="appbar"><button class="iconbtn" onclick="go('trips')">←</button><h1>Trip Details</h1></div>
+    <div class="scroll">
+      <div style="height:180px;position:relative"><div id="mapDetail" style="position:absolute;inset:0"></div></div>
+      <div class="pad">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div><div style="font-weight:800;font-size:17px">🚢 Ferry trip</div><div style="font-size:12px;color:var(--muted)">11 / 5 / 2026 · 81.57 km</div></div>
+          <span class="badge">🌱 5.3 kg CO₂ saved</span>
+        </div>
+        <div class="sectiontitle">Trip Timeline</div>
+        <div class="tl" id="timeline"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAVED -->
+  <div class="view" id="v-saved">
+    <div class="appbar"><button class="iconbtn" onclick="go('home')">←</button><h1>Saved Routes</h1></div>
+    <div class="scroll pad"><div class="empty"><div class="e">🔖</div><div>No saved routes yet</div><div style="font-size:12px">Plan a journey and tap save to keep it here.</div></div></div>
+  </div>
+
+  <!-- INSIGHTS -->
+  <div class="view" id="v-insights">
+    <div class="appbar"><button class="iconbtn" onclick="go('home')">←</button><h1>Your Impact</h1></div>
+    <div class="scroll pad">
+      <div class="impactcard"><div class="lab">Today's Activity Mix</div>
+        <div class="impactrow"><div><div class="big">312</div><div style="font-size:12px;opacity:.85">kcal burned</div></div><div style="text-align:right"><div class="big">1.84</div><div style="font-size:12px;opacity:.85">kg CO₂ saved</div></div></div></div>
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-weight:700;color:var(--brand)">Monthly Trend</div><div style="font-size:12px;color:var(--muted)">12% more sustainable trips than last month</div></div><div style="font-size:22px">📈</div></div>
+      <div class="sectiontitle">Monthly Distance Breakdown</div>
+      <div class="bars" id="bars"></div>
+      <div class="legend"><span><i style="background:var(--walk)"></i>Active Travel</span><span><i style="background:var(--micro)"></i>Micro-mobility</span><span><i style="background:var(--bus)"></i>Public Transit</span><span><i style="background:var(--car)"></i>Private Motor</span></div>
+    </div>
+  </div>
+
+  <!-- PROFILE -->
+  <div class="view" id="v-profile">
+    <div class="appbar"><button class="iconbtn" onclick="go('home')">←</button><h1>Profile</h1></div>
+    <div class="scroll pad">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px"><div class="avatar">T</div><div><div style="font-weight:700;font-size:17px">Travelly User</div><div style="font-size:12px;color:var(--muted)">Plan your sustainable route</div></div></div>
+      <div class="sectiontitle">Account Information</div>
+      <div class="prow"><span class="ic">✉️</span><div><div class="k">Email</div><div class="v">ibrahim.rasras@gmail.com</div></div></div>
+      <div class="prow"><span class="ic">🆔</span><div><div class="k">User ID</div><div class="v" style="font-size:12px">19be94e8-e0a1-70bb-3159-8ff853d80e3e</div></div></div>
+      <div class="prow"><span class="ic">🧑</span><div><div class="k">Name</div><div class="v">Not set</div></div></div>
+      <div class="prow"><span class="ic">📞</span><div><div class="k">Phone</div><div class="v">Not set</div></div></div>
+      <div class="sectiontitle">Preferences Summary</div>
+      <div class="prow"><span class="ic">🚶</span><div><div class="k">Preferred Transport Mode</div><div class="v">Walking</div></div></div>
+      <div class="prow"><span class="ic">🔔</span><div><div class="k">Notifications</div><div class="v" style="color:var(--green)">Enabled</div></div></div>
+      <div class="prow"><span class="ic">📏</span><div><div class="k">Units</div><div class="v">Metric (km)</div></div></div>
+      <div class="sectiontitle">Privacy &amp; Consent</div>
+      <div class="prow"><span class="ic">🛡️</span><div><div class="k">Location tracking</div><div class="v" style="color:var(--green)">Always allow</div></div></div>
+    </div>
+  </div>
+
+  <!-- HELP -->
+  <div class="view" id="v-help">
+    <div class="appbar"><button class="iconbtn" onclick="go('home')">←</button><h1>Help Centre</h1></div>
+    <div class="scroll pad">
+      <div class="acc" onclick="this.classList.toggle('open')"><div class="q">How is CO₂ reduction calculated?<span class="chev">⌄</span></div><div class="a">We compare your chosen transport method against the average emissions of a standard petrol car for the same distance.</div></div>
+      <div class="acc" onclick="this.classList.toggle('open')"><div class="q">What is the 'Dynamic Hub'?<span class="chev">⌄</span></div><div class="a">It's your central command. It tracks your live movement by default, but turns into a journey planner when you enter a destination.</div></div>
+      <div class="acc" onclick="this.classList.toggle('open')"><div class="q">Why isn't my trip tracking?<span class="chev">⌄</span></div><div class="a">Ensure 'Always Allow' location permissions are enabled in your phone settings so we can track you even when the screen is off.</div></div>
+      <div class="card" style="text-align:center;color:var(--brand);font-weight:700;margin-top:12px">✉️ Still need help? Contact Us</div>
+    </div>
+  </div>
+
+  <!-- DRAWER -->
+  <div class="drawer" id="drawer">
+    <div class="scrim" onclick="closeDrawer()"></div>
+    <div class="panel">
+      <div class="head"><div class="avatar" style="width:48px;height:48px;background:#fff;color:var(--brand)">T</div><div class="nm">Travelly User</div><div class="sb">Plan your sustainable route</div></div>
+      <div class="navitem" onclick="nav('trips')"><span class="i">🧭</span>My Trips</div>
+      <div class="navitem" onclick="nav('saved')"><span class="i">🔖</span>Saved Routes</div>
+      <div class="navitem" onclick="nav('insights')"><span class="i">📊</span>Insights</div>
+      <div class="navitem" onclick="nav('profile')"><span class="i">🧑</span>Profile</div>
+      <div class="navitem" onclick="nav('help')"><span class="i">❓</span>Help &amp; Support</div>
+      <div class="navitem signout" onclick="closeDrawer();toast('Signed out')"><span class="i">⎋</span>Sign Out</div>
+    </div>
+  </div>
+
+  <button class="installbtn" id="installBtn" onclick="doInstall()">⤓ Install Travelly on your phone</button>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+// ---------------- Service worker (installability) ----------------
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW',e)));
+}
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('installBtn').classList.add('show')});
+function doInstall(){if(!deferredPrompt)return;deferredPrompt.prompt();deferredPrompt.userChoice.finally(()=>{deferredPrompt=null;document.getElementById('installBtn').classList.remove('show')})}
+window.addEventListener('appinstalled',()=>document.getElementById('installBtn').classList.remove('show'));
+
+// ---------------- Navigation ----------------
+const views={home:'v-home',plan:'v-plan',routes:'v-routes',active:'v-active',trips:'v-trips',details:'v-details',saved:'v-saved',insights:'v-insights',profile:'v-profile',help:'v-help'};
+function go(v){
+  document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
+  document.getElementById(views[v]).classList.add('active');
+  const fix=(m)=>m&&setTimeout(()=>m.invalidateSize(),80);
+  if(v==='home')fix(map); if(v==='plan')fix(mapR); if(v==='routes')fix(mapRoutes); if(v==='active')fix(mapA); if(v==='details')fix(mapDetail);
+}
+function nav(v){closeDrawer();go(v)}
+function openDrawer(){document.getElementById('drawer').classList.add('open')}
+function closeDrawer(){document.getElementById('drawer').classList.remove('open')}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200)}
+function clearField(id){document.getElementById(id).value='';if(id==='destLoc')destCoords=null;hideAC(id)}
+
+// ---------------- Maps ----------------
+const BNE=[-27.4705,153.0260];
+const tiles=()=>L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
+function mkMap(id){const m=L.map(id,{zoomControl:false,attributionControl:false}).setView(BNE,14);tiles().addTo(m);return m}
+let map,mapR,mapRoutes,mapA,mapDetail,userMarker,userCircle,userCoords=null,destCoords=null,routeLine=null;
+window.addEventListener('load',()=>{
+  map=mkMap('map');mapR=mkMap('mapR');mapRoutes=mkMap('mapRoutes');mapA=mkMap('mapA');mapDetail=mkMap('mapDetail');
+  // detail demo route
+  L.polyline([[-27.61,152.76],[-27.55,152.86],[-27.50,152.95],[-27.47,153.02]],{color:'#ff7a00',weight:5}).addTo(mapDetail);
+  mapDetail.fitBounds([[-27.61,152.76],[-27.47,153.02]],{padding:[30,30]});
+  locateMe(false);
+  buildTrips();buildTimeline();buildBars();setTiming('now');
+});
+
+// ---------------- GPS current location ----------------
+function setUser(lat,lon,acc){
+  userCoords=[lat,lon];
+  const ll=[lat,lon];
+  if(!userMarker){
+    userMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="userdot"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
+    userCircle=L.circle(ll,{radius:acc||40,color:'#1769ff',weight:1,fillColor:'#1769ff',fillOpacity:.12}).addTo(map);
+  }else{userMarker.setLatLng(ll);userCircle.setLatLng(ll).setRadius(acc||40)}
+}
+function locateMe(recenter){
+  if(!navigator.geolocation){toast('GPS not supported on this device');return}
+  if(recenter)toast('Finding your location…');
+  navigator.geolocation.getCurrentPosition(p=>{
+    const {latitude,longitude,accuracy}=p.coords;
+    setUser(latitude,longitude,accuracy);
+    if(recenter||!map._loadedOnce){map.setView([latitude,longitude],16);map._loadedOnce=true}
+    reverseGeocode(latitude,longitude);
+    fetchWeather(latitude,longitude);
+    // keep watching for live updates
+    if(!window._watch)window._watch=navigator.geolocation.watchPosition(q=>setUser(q.coords.latitude,q.coords.longitude,q.coords.accuracy),()=>{},{enableHighAccuracy:true,maximumAge:5000});
+  },err=>{
+    document.getElementById('nearLabel').textContent='Enable GPS';
+    if(recenter)toast('Location blocked — allow it in settings');
+    fetchWeather(BNE[0],BNE[1]);
+  },{enableHighAccuracy:true,timeout:10000,maximumAge:0});
+}
+function reverseGeocode(lat,lon){
+  fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lon}&lang=en`)
+    .then(r=>r.json()).then(d=>{
+      const p=(d.features&&d.features[0]&&d.features[0].properties)||{};
+      const label=p.street?(p.street+(p.district?', '+p.district:'')):(p.name||p.city||'Current location');
+      document.getElementById('nearLabel').textContent=p.district||p.city||p.street||'You';
+      const cur=document.getElementById('curLoc');
+      if(!cur.value){cur.value='📍 '+label;}
+    }).catch(()=>{document.getElementById('nearLabel').textContent='You'});
+}
+// ---------------- Weather (Open-Meteo, no key) ----------------
+function fetchWeather(lat,lon){
+  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code`)
+    .then(r=>r.json()).then(d=>{
+      const c=d.current||{};
+      document.getElementById('wxTemp').textContent=Math.round(c.temperature_2m)+'°';
+      document.getElementById('wxCity').textContent='Now';
+      document.getElementById('wxIcon').textContent=wxEmoji(c.weather_code);
+    }).catch(()=>{});
+}
+function wxEmoji(code){if(code==null)return '⛅';if(code===0)return '☀️';if(code<=3)return '⛅';if(code<=48)return '🌫️';if(code<=67)return '🌧️';if(code<=77)return '🌨️';if(code<=82)return '🌦️';if(code<=99)return '⛈️';return '⛅'}
+
+// ---------------- Smart address autocomplete (Photon) ----------------
+function typeIcon(v){const m={street:'🛣️',residential:'🏘️',primary:'🛣️',secondary:'🛣️',tertiary:'🛣️',house:'🏠',hospital:'🏥',school:'🏫',university:'🎓',supermarket:'🛒',station:'🚉',bus_stop:'🚌',cafe:'☕',restaurant:'🍽️',park:'🌳'};return m[v]||'📍'}
+function fmtAddr(p){
+  let main = p.name || p.street || 'Unknown';
+  if(p.housenumber && p.street) main = p.housenumber+' '+p.street;
+  else if(p.street && p.name && p.name!==p.street) main = p.name;
+  const sec=[p.district,p.city,p.state,p.postcode].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
+  return {main,sec};
+}
+function attachAC(inputId){
+  const input=document.getElementById(inputId), box=document.getElementById('ac-'+inputId);
+  let timer=null, ctrl=null;
+  input.addEventListener('input',()=>{
+    const q=input.value.replace(/^📍\s*/,'').trim();
+    if(inputId==='destLoc')destCoords=null;
+    if(q.length<2){hideAC(inputId);return}
+    clearTimeout(timer);
+    timer=setTimeout(()=>{
+      box.innerHTML='<div class="acloading">Searching…</div>';box.classList.add('show');
+      if(ctrl)ctrl.abort();ctrl=new AbortController();
+      const bias=userCoords?`&lat=${userCoords[0]}&lon=${userCoords[1]}`:`&lat=${BNE[0]}&lon=${BNE[1]}`;
+      fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=en${bias}`,{signal:ctrl.signal})
+        .then(r=>r.json()).then(d=>renderAC(inputId,d.features||[]))
+        .catch(e=>{if(e.name!=='AbortError'){box.innerHTML='<div class="acloading">No suggestions (offline?)</div>'}});
+    },260);
+  });
+  input.addEventListener('focus',()=>{if(box.innerHTML&&input.value.trim().length>=2)box.classList.add('show')});
+  document.addEventListener('click',e=>{if(!box.contains(e.target)&&e.target!==input)hideAC(inputId)});
+}
+function renderAC(inputId,feats){
+  const box=document.getElementById('ac-'+inputId);
+  if(!feats.length){box.innerHTML='<div class="acloading">No matches found</div>';return}
+  box.innerHTML='';
+  feats.forEach(f=>{
+    const p=f.properties, {main,sec}=fmtAddr(p);
+    const el=document.createElement('div');el.className='acitem';
+    el.innerHTML=`<span class="ic">${typeIcon(p.osm_value)}</span><div class="info"><div class="main">${main}</div><div class="secd">${sec||p.country||''}</div></div>`;
+    el.onclick=()=>{
+      const input=document.getElementById(inputId);
+      input.value=main+(sec?', '+sec.split(',')[0]:'');
+      const [lon,lat]=f.geometry.coordinates;
+      if(inputId==='destLoc'){destCoords=[lat,lon];}
+      else{userCoords=[lat,lon];}
+      hideAC(inputId);
+      previewDest(lat,lon);
+    };
+    box.appendChild(el);
+  });
+  box.classList.add('show');
+}
+function hideAC(id){const b=document.getElementById('ac-'+id);if(b)b.classList.remove('show')}
+function previewDest(lat,lon){
+  if(!mapR)return;
+  if(window._destM)mapR.removeLayer(window._destM);
+  window._destM=L.marker([lat,lon]).addTo(mapR);
+  if(userCoords)mapR.fitBounds([userCoords,[lat,lon]],{padding:[60,60]});else mapR.setView([lat,lon],15);
+}
+
+// ---------------- Timing (Now/Depart/Arrive) ----------------
+let timing='now';
+const pad=n=>String(n).padStart(2,'0');
+function setTiming(t){
+  timing=t;
+  document.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  const wrap=document.getElementById('dtwrap'),hint=document.getElementById('timingHint');
+  if(t==='now'){wrap.classList.remove('show');hint.innerHTML='🕓 Leaving now — finding fastest sustainable routes.';}
+  else{
+    wrap.classList.add('show');
+    document.getElementById('dtlabel').textContent=t==='depart'?'Depart date':'Arrive date';
+    const d=new Date();if(t==='arrive')d.setHours(d.getHours()+1);
+    if(!document.getElementById('tripDate').value)document.getElementById('tripDate').value=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    if(!document.getElementById('tripTime').value)document.getElementById('tripTime').value=`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    updateHint();
+  }
+}
+document.addEventListener('input',e=>{if(e.target.id==='tripDate'||e.target.id==='tripTime')updateHint()});
+function prettyDT(){const dv=document.getElementById('tripDate').value,tv=document.getElementById('tripTime').value;if(!dv||!tv)return '';const dt=new Date(dv+'T'+tv);return dt.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'})+' · '+dt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
+function updateHint(){const p=prettyDT();if(!p)return;document.getElementById('timingHint').innerHTML=(timing==='depart'?'🚀 Departing ':'🎯 Arriving by ')+p}
+
+// ---------------- Routing (OSRM) ----------------
+const PROFILES=[
+  {key:'foot',mode:'Walking',ic:'🚶',modes:'🚶',kcalPerKm:50,co2PerKm:0.192},
+  {key:'bike',mode:'Cycling',ic:'🚲',modes:'🚲',kcalPerKm:30,co2PerKm:0.192},
+  {key:'driving',mode:'Drive / Bus',ic:'🚌',modes:'🚌',kcalPerKm:3,co2PerKm:0.04}
+];
+let routeData=[],selRoute=null;
+function fmtDur(s){const h=Math.floor(s/3600),m=Math.round((s%3600)/60);return h?`${h} h ${m} min`:`${m} min`}
+async function findRoutes(){
+  const destInput=document.getElementById('destLoc').value.trim();
+  if(!destInput){toast('Enter a destination first');return}
+  const btn=document.getElementById('findBtn');btn.textContent='Finding routes…';btn.disabled=true;
+  const from=userCoords||BNE;
+  const to=destCoords; // may be null if user typed but didn't pick
+  document.getElementById('routeList').innerHTML='';
+  let summary=(document.getElementById('curLoc').value.replace(/^📍\s*/,'')||'My location')+' → '+destInput;
+  if(timing!=='now'){const p=prettyDT();if(p)summary+=' · '+(timing==='depart'?'Depart ':'Arrive ')+p}
+  document.getElementById('routeSummary').textContent=summary;
+  routeData=[];selRoute=null;
+  go('routes');setTimeout(()=>mapRoutes.invalidateSize(),100);
+  if(to){
+    // real OSRM routes
+    const results=await Promise.all(PROFILES.map(pr=>osrm(pr,from,to)));
+    routeData=results.filter(Boolean);
+  }
+  if(!routeData.length){routeData=mockRoutes();toast('Showing estimated routes (offline)')}
+  renderRoutes(from,to);
+  btn.textContent='Find Routes';btn.disabled=false;
+}
+async function osrm(pr,from,to){
+  try{
+    const url=`https://router.project-osrm.org/route/v1/${pr.key}/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+    const r=await fetch(url);const d=await r.json();
+    if(!d.routes||!d.routes.length)return null;
+    const rt=d.routes[0];const km=rt.distance/1000;
+    return {...pr,dur:fmtDur(rt.duration),durSec:rt.duration,km,geom:rt.geometry.coordinates.map(c=>[c[1],c[0]]),
+      kcal:Math.round(km*pr.kcalPerKm),co2:(km*0.192).toFixed(1)};
+  }catch(e){return null}
+}
+function mockRoutes(){return PROFILES.map((pr,i)=>{const km=6+i*1.2;return{...pr,dur:fmtDur((km/[5,16,40][i])*3600),km,geom:null,kcal:Math.round(km*pr.kcalPerKm),co2:(km*0.192).toFixed(1)}})}
+function renderRoutes(from,to){
+  const list=document.getElementById('routeList');list.innerHTML='';
+  routeData.forEach((r,i)=>{
+    const el=document.createElement('div');el.className='routecard';
+    el.innerHTML=`<div class="modes">${r.modes}</div><div class="info"><div class="dur">${r.dur}</div><div class="meta">${r.km.toFixed(1)} km · ${r.mode}</div><span class="badge">🌱 ${r.co2} kg CO₂ saved</span></div><span class="tag">${r.kcal} kcal</span>`;
+    el.onclick=()=>{selRoute=i;document.querySelectorAll('.routecard').forEach(c=>c.classList.remove('sel'));el.classList.add('sel');document.getElementById('startBtn').disabled=false;drawRoute(r,from,to)};
+    list.appendChild(el);
+  });
+  // draw first by default
+  if(routeData[0])drawRoute(routeData[0],from,to);
+}
+function drawRoute(r,from,to){
+  if(routeLine)mapRoutes.removeLayer(routeLine);
+  if(r.geom){routeLine=L.polyline(r.geom,{color:'#1769ff',weight:6,opacity:.85}).addTo(mapRoutes);mapRoutes.fitBounds(routeLine.getBounds(),{padding:[40,40]});}
+  else if(to){routeLine=L.polyline([from,to],{color:'#1769ff',weight:5,dashArray:'8 8'}).addTo(mapRoutes);mapRoutes.fitBounds([from,to],{padding:[50,50]})}
+}
+
+// ---------------- Active trip ----------------
+let trip=null;
+function startTrip(){
+  const r=routeData[selRoute];
+  document.getElementById('liveMode').textContent=r.mode;
+  document.getElementById('liveModeIc').textContent=r.ic;
+  go('active');toast('Trip started — tracking live');
+  setTimeout(()=>mapA.invalidateSize(),120);
+  // draw on active map + animate
+  if(window._aLine)mapA.removeLayer(window._aLine);
+  const geom=r.geom||(destCoords&&userCoords?[userCoords,destCoords]:[BNE,[BNE[0]+0.02,BNE[1]+0.02]]);
+  window._aLine=L.polyline(geom,{color:'#1769ff',weight:6}).addTo(mapA);
+  mapA.fitBounds(window._aLine.getBounds(),{padding:[50,50]});
+  const moveM=L.marker(geom[0],{icon:L.divIcon({className:'',html:'<div class="userdot"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(mapA);
+  let sec=0,dist=0,kcal=0,co2=0,idx=0;const per=r.kcal/(r.km||1);
+  clearInterval(trip);
+  trip=setInterval(()=>{
+    sec++;dist+=(r.km/120)||0.012;kcal+=per*((r.km/120)||0.012);co2+=0.192*((r.km/120)||0.012);
+    document.getElementById('sTime').textContent=Math.floor(sec/60)+':'+pad(sec%60);
+    document.getElementById('sDist').innerHTML=dist.toFixed(1)+'<small style="font-size:12px"> km</small>';
+    document.getElementById('sKcal').textContent=Math.round(kcal);
+    document.getElementById('sCo2').textContent=co2.toFixed(2);
+    idx=Math.min(geom.length-1,Math.floor((sec/120)*geom.length));moveM.setLatLng(geom[idx]);
+  },1000);
+}
+function finishTrip(){clearInterval(trip);toast('Trip saved to history 🌱');go('trips')}
+
+// ---------------- Static data ----------------
+const TRIPS=[
+  {ic:'🚢',c:'var(--ferry)',t:'Ferry',s:'11/5/2026 · 81.57 km · 1 h 25 m',r:'15:00<br>1182 kcal'},
+  {ic:'🚌',c:'var(--bus)',t:'Bus + Walk',s:'09/5/2026 · 8.41 km · 24 m',r:'08:10<br>795 kcal'},
+  {ic:'🚲',c:'var(--micro)',t:'Cycle',s:'07/5/2026 · 12.3 km · 41 m',r:'17:30<br>410 kcal'}
+];
+function buildTrips(){const c=document.getElementById('tripsList');c.innerHTML='';TRIPS.forEach(t=>{const el=document.createElement('div');el.className='tripitem';el.onclick=()=>go('details');el.innerHTML=`<div class="ic" style="background:${t.c}">${t.ic}</div><div class="info"><div class="ti">${t.t}</div><div class="ts">${t.s}</div></div><div class="tr">${t.r}</div>`;c.appendChild(el)})}
+const SEGS=[
+  {ic:'🚶',c:'var(--walk)',m:'Walk to Warwick Rd',d:'9.21 km · 1 h 35 m · 1002 kcal',co2:'0.00 kg',w:'45%'},
+  {ic:'🚗',c:'var(--car)',m:'Car towards Booval',d:'1.44 km · 4 m · 7 kcal',co2:'—',w:'15%'},
+  {ic:'🚢',c:'var(--ferry)',m:'Ferry to Brisbane',d:'39.49 km · 41 m · 675 kcal',co2:'5.30 kg',w:'70%'},
+  {ic:'🚌',c:'var(--bus)',m:'Bus to CBD',d:'8.41 km · 24 m · 795 kcal',co2:'1.80 kg',w:'35%'}
+];
+function buildTimeline(){const c=document.getElementById('timeline');c.innerHTML='';SEGS.forEach(s=>{const el=document.createElement('div');el.className='tlseg';el.innerHTML=`<div class="ic" style="background:${s.c}">${s.ic}</div><div class="body"><div class="m">${s.m}</div><div class="d">${s.d}</div><div class="bar" style="background:${s.c};width:${s.w}"></div>${s.co2!=='—'?`<div class="co2">🌱 ${s.co2} CO₂ saved</div>`:''}</div>`;c.appendChild(el)})}
+const MONTHS=['J','F','M','A','M','J','J','A','S','O','N','D'];
+function buildBars(){const c=document.getElementById('bars');c.innerHTML='';MONTHS.forEach((m,i)=>{const walk=10+((i*7)%30),micro=5+((i*5)%18),bus=8+((i*11)%25),car=4+((i*3)%14);const col=document.createElement('div');col.className='col';col.innerHTML=`<div class="lab">${m}</div><div class="bseg" style="height:${car}px;background:var(--car)"></div><div class="bseg" style="height:${bus}px;background:var(--bus)"></div><div class="bseg" style="height:${micro}px;background:var(--micro)"></div><div class="bseg" style="height:${walk}px;background:var(--walk)"></div>`;c.appendChild(col)})}
+
+// init autocomplete
+attachAC('curLoc');attachAC('destLoc');
+</script>
+</body>
+</html>
