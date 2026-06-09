@@ -139,6 +139,34 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
 .pad{padding:16px}
 .installbtn{position:fixed;left:16px;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));background:#111;color:#fff;border:none;border-radius:14px;padding:14px;font-weight:700;font-size:15px;z-index:130;display:none}
 .installbtn.show{display:block}
+/* ---- Material date & time pickers ---- */
+.pickerback{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:center;justify-content:center;padding:20px}
+.pickerback.show{display:flex}
+.picker{background:#f5eefb;border-radius:28px;width:100%;max-width:330px;padding:20px 16px 10px;box-shadow:0 24px 64px rgba(0,0,0,.4);color:#1d1b20}
+.picker .phdr{font-size:12px;color:#49454f;letter-spacing:.4px;margin:0 6px 10px;font-weight:600}
+.picker .pbig{font-size:30px;font-weight:600;margin:0 6px 14px}
+.pactions{display:flex;justify-content:flex-end;gap:10px;margin-top:10px}
+.pactions button{background:none;border:none;color:#6750a4;font-weight:800;font-size:14px;padding:8px 12px;cursor:pointer;border-radius:10px}
+.pactions button:active{background:#e8def8}
+.dpnav{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px;font-weight:600;font-size:14px}
+.dpnav button{background:none;border:none;font-size:22px;color:#49454f;cursor:pointer;width:38px;height:38px;border-radius:50%}
+.dpgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;text-align:center}
+.dpgrid .wd{font-size:12px;color:#49454f;padding:6px 0;font-weight:700}
+.dpgrid .day{width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:14px;border-radius:50%;cursor:pointer;margin:2px auto}
+.dpgrid .day:active{background:#e8def8}
+.dpgrid .day.sel{background:#6750a4;color:#fff;font-weight:700}
+.dpgrid .day.today{border:1.5px solid #6750a4}
+.tpsegs{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:10px}
+.tpseg{font-size:38px;font-weight:600;background:#e8def8;color:#1d1b20;border-radius:10px;padding:4px 12px;min-width:66px;text-align:center;cursor:pointer}
+.tpseg.active{background:#6750a4;color:#fff}
+.tpcolon{font-size:38px;font-weight:600}
+.clock{position:relative;width:240px;height:240px;border-radius:50%;background:#e8def8;margin:6px auto 4px;touch-action:none}
+.cnum{position:absolute;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;transform:translate(-50%,-50%);pointer-events:none;color:#1d1b20;font-weight:600}
+.cnum.sel{background:#6750a4;color:#fff}
+.cnum.outer{color:#49454f;font-weight:500;font-size:12px}
+.chand{position:absolute;left:120px;top:120px;height:2px;background:#6750a4;transform-origin:0 50%;pointer-events:none}
+.ccenter{position:absolute;left:120px;top:120px;width:8px;height:8px;background:#6750a4;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:3}
+.cknob{position:absolute;width:34px;height:34px;border-radius:50%;background:rgba(103,80,164,.3);transform:translate(-50%,-50%);pointer-events:none}
 </style>
 </head>
 <body>
@@ -187,8 +215,8 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
           <button data-t="arrive" onclick="setTiming('arrive')">Arrive</button>
         </div>
         <div class="dtwrap" id="dtwrap">
-          <div class="dtfield"><label id="dtlabel">Depart date</label><input type="date" id="tripDate"></div>
-          <div class="dtfield"><label>Time</label><input type="time" id="tripTime"></div>
+          <div class="dtfield"><label id="dtlabel">Depart date</label><input type="text" id="tripDate" readonly placeholder="Select date" onclick="openDatePicker('tripDate')"></div>
+          <div class="dtfield"><label>Time</label><input type="text" id="tripTime" readonly placeholder="Select time" onclick="openTimePicker('tripTime')"></div>
         </div>
         <div class="hint" id="timingHint">🕓 Leaving now — finding fastest sustainable routes.</div>
         <button class="btn primary" id="findBtn" onclick="findRoutes()">Find Routes</button>
@@ -250,8 +278,8 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
         <button data-s="arrive" onclick="setSchedKind('arrive')">Arrive by</button>
       </div>
       <div style="display:flex;gap:10px;margin-bottom:14px">
-        <div class="dtfield"><label id="schLabel">Depart date</label><input type="date" id="schDate"></div>
-        <div class="dtfield"><label>Time</label><input type="time" id="schTime"></div>
+        <div class="dtfield"><label id="schLabel">Depart date</label><input type="text" id="schDate" readonly placeholder="Select date" onclick="openDatePicker('schDate')"></div>
+        <div class="dtfield"><label>Time</label><input type="text" id="schTime" readonly placeholder="Select time" onclick="openTimePicker('schTime')"></div>
       </div>
       <div class="hint" id="schHint"></div>
       <button class="btn green" onclick="confirmSchedule()">✓ Confirm Schedule</button>
@@ -361,6 +389,25 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
     </div>
   </div>
 
+  <!-- DATE PICKER -->
+  <div class="pickerback" id="dpBack">
+    <div class="picker">
+      <div class="phdr">SELECT DATE</div>
+      <div class="pbig" id="dpHeadline">Select date</div>
+      <div class="dpnav"><button onclick="dpNav(-1)">&#8249;</button><span id="dpMonthLbl"></span><button onclick="dpNav(1)">&#8250;</button></div>
+      <div class="dpgrid" id="dpGrid"></div>
+      <div class="pactions"><button onclick="dpClose()">Cancel</button><button onclick="dpOk()">OK</button></div>
+    </div>
+  </div>
+  <!-- TIME PICKER -->
+  <div class="pickerback" id="tpBack">
+    <div class="picker">
+      <div class="phdr">SELECT TIME</div>
+      <div class="tpsegs"><span class="tpseg active" id="tpHour" onclick="tpSetMode('h')">12</span><span class="tpcolon">:</span><span class="tpseg" id="tpMin" onclick="tpSetMode('m')">00</span></div>
+      <div class="clock" id="clock"><div class="cknob" id="cknob"></div><div class="chand" id="chand"></div><div class="ccenter"></div></div>
+      <div class="pactions"><button onclick="tpClose()">Cancel</button><button onclick="tpOk()">OK</button></div>
+    </div>
+  </div>
   <button class="installbtn" id="installBtn" onclick="doInstall()">⤓ Install Travelly on your phone</button>
   <div class="toast" id="toast"></div>
 </div>
@@ -476,14 +523,17 @@ function setTiming(t){
   if(t==='now'){wrap.classList.remove('show');hint.innerHTML='🕓 Leaving now — finding fastest sustainable routes.';}
   else{wrap.classList.add('show');document.getElementById('dtlabel').textContent=t==='depart'?'Depart date':'Arrive date';
     const d=new Date();if(t==='arrive')d.setHours(d.getHours()+1);
-    if(!document.getElementById('tripDate').value)document.getElementById('tripDate').value=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-    if(!document.getElementById('tripTime').value)document.getElementById('tripTime').value=`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    if(!getISO('tripDate'))setDateVal(document.getElementById('tripDate'),d);
+    if(!getISO('tripTime'))setTimeVal(document.getElementById('tripTime'),d);
     updateHint();}
 }
 document.addEventListener('input',e=>{if(e.target.id==='tripDate'||e.target.id==='tripTime')updateHint()});
 function prettyDT(){const dt=dtValue();return dt?fmtDateTime(dt):''}
 function updateHint(){const p=prettyDT();if(!p)return;document.getElementById('timingHint').innerHTML=(timing==='depart'?'🚀 Departing ':'🎯 Arriving by ')+p}
-function dtValue(){const dv=document.getElementById('tripDate').value,tv=document.getElementById('tripTime').value;return (dv&&tv)?new Date(dv+'T'+tv):null}
+function setDateVal(el,d){el.dataset.iso=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;el.value=d.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'});}
+function setTimeVal(el,d){el.dataset.iso=`${pad(d.getHours())}:${pad(d.getMinutes())}`;el.value=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}
+function getISO(id){return document.getElementById(id).dataset.iso||''}
+function dtValue(){const dv=getISO('tripDate'),tv=getISO('tripTime');return (dv&&tv)?new Date(dv+'T'+tv):null}
 function hhmm(d){return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
 function fmtDateTime(d){const today=new Date();const same=d.toDateString()===today.toDateString();return (same?'Today':d.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'}))+' · '+hhmm(d)}
 function computeTimes(durSec){const now=new Date();let dep,arr;const dt=dtValue();
@@ -656,14 +706,14 @@ function openSchedule(){
   document.getElementById('schSummary').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:700">${r.ic} ${r.mode} · ${r.dur}</div><div style="font-size:12px;color:var(--muted)">${(destName||'Destination')} · ${r.km.toFixed(1)} km</div></div><div style="font-size:26px">📅</div></div>`;
   // seed from plan timing if set, else now+1h
   const seed=dtValue()||new Date(Date.now()+3600*1000);
-  document.getElementById('schDate').value=`${seed.getFullYear()}-${pad(seed.getMonth()+1)}-${pad(seed.getDate())}`;
-  document.getElementById('schTime').value=`${pad(seed.getHours())}:${pad(seed.getMinutes())}`;
+  setDateVal(document.getElementById('schDate'),seed);
+  setTimeVal(document.getElementById('schTime'),seed);
   setSchedKind(timing==='arrive'?'arrive':'depart');
   go('schedule');
 }
 function setSchedKind(k){schedKind=k;document.querySelectorAll('[data-s]').forEach(b=>b.classList.toggle('on',b.dataset.s===k));document.getElementById('schLabel').textContent=k==='depart'?'Depart date':'Arrive date';updateSchedHint();}
 ['schDate','schTime'].forEach(id=>document.addEventListener('input',e=>{if(e.target.id===id)updateSchedHint()}));
-function schDT(){const dv=document.getElementById('schDate').value,tv=document.getElementById('schTime').value;return (dv&&tv)?new Date(dv+'T'+tv):null}
+function schDT(){const dv=getISO('schDate'),tv=getISO('schTime');return (dv&&tv)?new Date(dv+'T'+tv):null}
 function updateSchedHint(){const dt=schDT();if(!dt){document.getElementById('schHint').textContent='';return}const r=routeData[selRoute];let dep,arr;if(schedKind==='arrive'){arr=dt;dep=new Date(dt.getTime()-r.durSec*1000);}else{dep=dt;arr=new Date(dt.getTime()+r.durSec*1000);}document.getElementById('schHint').innerHTML=`🚀 Depart ${fmtDateTime(dep)}  →  🎯 Arrive ${fmtDateTime(arr)}`;}
 function confirmSchedule(){
   const dt=schDT();if(!dt){toast('Pick a date and time');return}
@@ -722,6 +772,70 @@ const SEGS=[
 function buildTimeline(){const c=document.getElementById('timeline');c.innerHTML='';SEGS.forEach(s=>{const el=document.createElement('div');el.className='tlseg';el.innerHTML=`<div class="ic" style="background:${s.c}">${s.ic}</div><div class="body"><div class="m">${s.m}</div><div class="d">${s.d}</div><div class="bar" style="background:${s.c};width:${s.w}"></div>${s.co2!=='—'?`<div class="co2">🌱 ${s.co2} CO₂ saved</div>`:''}</div>`;c.appendChild(el)})}
 const MONTHS=['J','F','M','A','M','J','J','A','S','O','N','D'];
 function buildBars(){const c=document.getElementById('bars');c.innerHTML='';MONTHS.forEach((m,i)=>{const walk=10+((i*7)%30),micro=5+((i*5)%18),bus=8+((i*11)%25),car=4+((i*3)%14);const col=document.createElement('div');col.className='col';col.innerHTML=`<div class="lab">${m}</div><div class="bseg" style="height:${car}px;background:var(--car)"></div><div class="bseg" style="height:${bus}px;background:var(--bus)"></div><div class="bseg" style="height:${micro}px;background:var(--micro)"></div><div class="bseg" style="height:${walk}px;background:var(--walk)"></div>`;c.appendChild(col)})}
+
+// ---------------- Material date picker ----------------
+let dpTarget=null,dpYear,dpMonth0,dpSel;
+const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function openDatePicker(id){dpTarget=id;const iso=getISO(id);const base=iso?new Date(iso+'T00:00'):new Date();dpSel=new Date(base);dpYear=base.getFullYear();dpMonth0=base.getMonth();renderDP();document.getElementById('dpBack').classList.add('show');}
+function dpClose(){document.getElementById('dpBack').classList.remove('show')}
+function dpNav(d){dpMonth0+=d;if(dpMonth0<0){dpMonth0=11;dpYear--}if(dpMonth0>11){dpMonth0=0;dpYear++}renderDP();}
+function renderDP(){
+  document.getElementById('dpMonthLbl').textContent=MN[dpMonth0]+' '+dpYear;
+  document.getElementById('dpHeadline').textContent=dpSel.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'});
+  const grid=document.getElementById('dpGrid');grid.innerHTML='';const today=new Date();
+  ['S','M','T','W','T','F','S'].forEach(w=>{const e=document.createElement('div');e.className='wd';e.textContent=w;grid.appendChild(e)});
+  const start=new Date(dpYear,dpMonth0,1).getDay();const days=new Date(dpYear,dpMonth0+1,0).getDate();
+  for(let i=0;i<start;i++)grid.appendChild(document.createElement('div'));
+  for(let d=1;d<=days;d++){const e=document.createElement('div');e.className='day';e.textContent=d;
+    if(dpSel.getFullYear()===dpYear&&dpSel.getMonth()===dpMonth0&&dpSel.getDate()===d)e.classList.add('sel');
+    else if(today.getFullYear()===dpYear&&today.getMonth()===dpMonth0&&today.getDate()===d)e.classList.add('today');
+    e.onclick=()=>{dpSel=new Date(dpYear,dpMonth0,d);renderDP();};grid.appendChild(e);}
+}
+function dpOk(){if(dpTarget){const el=document.getElementById(dpTarget);setDateVal(el,dpSel);el.dispatchEvent(new Event('input',{bubbles:true}));}dpClose();}
+
+// ---------------- Material clock time picker (24h) ----------------
+const TP_C=120,TP_RO=104,TP_RI=70,TP_TH=88;
+let tpTarget=null,tpH=12,tpM=0,tpMode='h',tpDrag=false;
+function openTimePicker(id){tpTarget=id;const iso=getISO(id);if(iso){const a=iso.split(':');tpH=+a[0];tpM=+a[1];}else{const n=new Date();tpH=n.getHours();tpM=n.getMinutes();}tpMode='h';renderTP();document.getElementById('tpBack').classList.add('show');}
+function tpClose(){document.getElementById('tpBack').classList.remove('show')}
+function tpSetMode(m){tpMode=m;renderTP();}
+function tpOk(){if(tpTarget){const el=document.getElementById(tpTarget);const d=new Date();d.setHours(tpH,tpM,0,0);setTimeVal(el,d);el.dispatchEvent(new Event('input',{bubbles:true}));}tpClose();}
+function renderTP(){
+  document.getElementById('tpHour').textContent=pad(tpH);
+  document.getElementById('tpMin').textContent=pad(tpM);
+  document.getElementById('tpHour').classList.toggle('active',tpMode==='h');
+  document.getElementById('tpMin').classList.toggle('active',tpMode==='m');
+  const clock=document.getElementById('clock');clock.querySelectorAll('.cnum').forEach(n=>n.remove());
+  function put(label,deg,r,cls){const rad=(deg-90)*Math.PI/180;const x=TP_C+r*Math.cos(rad),y=TP_C+r*Math.sin(rad);const e=document.createElement('div');e.className='cnum'+(cls?' '+cls:'');e.style.left=x+'px';e.style.top=y+'px';e.textContent=label;clock.appendChild(e);}
+  if(tpMode==='h'){
+    for(let h=1;h<=12;h++)put(String(h),h*30,TP_RI,(tpH===h)?'sel':'');
+    for(let h=13;h<=24;h++){const v=h%24;put(v===0?'00':String(v),(h-12)*30,TP_RO,'outer'+(tpH===v?' sel':''));}
+  }else{
+    for(let m=0;m<60;m+=5)put(pad(m),m*6,TP_RO,(tpM===m)?'sel':'');
+  }
+  let deg,r;
+  if(tpMode==='h'){const hh=tpH%24;if(hh>=1&&hh<=12){deg=hh*30;r=TP_RI;}else{const pos=hh===0?12:hh-12;deg=pos*30;r=TP_RO;}}
+  else{deg=tpM*6;r=TP_RO;}
+  const rad=(deg-90)*Math.PI/180;
+  const hand=document.getElementById('chand');hand.style.width=r+'px';hand.style.transform=`rotate(${deg-90}deg)`;
+  const kn=document.getElementById('cknob');kn.style.left=(TP_C+r*Math.cos(rad))+'px';kn.style.top=(TP_C+r*Math.sin(rad))+'px';
+}
+function clockPick(e){
+  const clock=document.getElementById('clock');const rect=clock.getBoundingClientRect();
+  const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+  const px=(e.touches&&e.touches[0])?e.touches[0].clientX:e.clientX, py=(e.touches&&e.touches[0])?e.touches[0].clientY:e.clientY;
+  const dx=px-cx, dy=py-cy; let deg=Math.atan2(dy,dx)*180/Math.PI+90; if(deg<0)deg+=360; const rr=Math.hypot(dx,dy);
+  if(tpMode==='h'){let pos=Math.round(deg/30)%12; if(pos===0)pos=12; const inner=rr<TP_TH;
+    tpH=inner?pos:(pos===12?0:pos+12);
+  }else{tpM=Math.round(deg/6)%60;}
+  renderTP();
+}
+window.addEventListener('load',()=>{
+  const clock=document.getElementById('clock');if(!clock)return;
+  clock.addEventListener('pointerdown',e=>{tpDrag=true;try{clock.setPointerCapture(e.pointerId)}catch(_){}clockPick(e);e.preventDefault();});
+  clock.addEventListener('pointermove',e=>{if(tpDrag)clockPick(e);});
+  clock.addEventListener('pointerup',e=>{tpDrag=false;if(tpMode==='h'){tpMode='m';renderTP();}});
+});
 
 attachAC('curLoc');attachAC('destLoc');
 </script>
