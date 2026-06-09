@@ -66,6 +66,9 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
 .seg{display:flex;background:#eef0f6;border-radius:13px;padding:4px;margin:6px 0 12px}
 .seg button{flex:1;border:none;background:transparent;padding:9px;border-radius:10px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer}
 .seg button.on{background:#fff;color:var(--brand);box-shadow:0 2px 6px rgba(0,0,0,.08)}
+#modeSeg{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#modeSeg::-webkit-scrollbar{display:none}
+#modeSeg button{flex:0 0 auto;white-space:nowrap;padding:9px 13px}
 .dtwrap{display:none;gap:10px;margin-bottom:12px}
 .dtwrap.show{display:flex}
 .dtfield{flex:1;display:flex;flex-direction:column;gap:4px}
@@ -202,7 +205,9 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
       <div class="seg" id="modeSeg">
         <button data-m="foot" onclick="setMode('foot')">🚶 Walk</button>
         <button data-m="bike" onclick="setMode('bike')">🚲 Cycle</button>
-        <button class="on" data-m="driving" onclick="setMode('driving')">🚗 Drive</button>
+        <button data-m="scooter" onclick="setMode('scooter')">🛴 Scooter</button>
+        <button class="on" data-m="transit" onclick="setMode('transit')">🚌 Transit</button>
+        <button data-m="driving" onclick="setMode('driving')">🚗 Drive</button>
       </div>
       <div id="routeHeadline" class="card" style="display:none"></div>
       <div id="routeList"></div>
@@ -345,7 +350,7 @@ function clearField(id){document.getElementById(id).value='';if(id==='destLoc')d
 // ---------------- Google Maps (keyless embed) ----------------
 const BNE=[-27.4705,153.0260];
 function gmapPoint(lat,lon,z){return `https://maps.google.com/maps?q=${lat},${lon}&z=${z||16}&output=embed`}
-function gmapDir(from,to){return `https://maps.google.com/maps?saddr=${from[0]},${from[1]}&daddr=${to[0]},${to[1]}&output=embed`}
+function gmapDir(from,to,flg){return `https://maps.google.com/maps?saddr=${from[0]},${from[1]}&daddr=${to[0]},${to[1]}&dirflg=${flg||'d'}&output=embed`}
 function setSrc(id,url){const el=document.getElementById(id);if(el&&el.src!==url)el.src=url}
 function setHomeMap(lat,lon){setSrc('gmapHome',gmapPoint(lat,lon,16))}
 function setPlanMap(lat,lon,z){setSrc('gmapPlan',gmapPoint(lat,lon,z||15))}
@@ -477,12 +482,28 @@ function updateHint(){const p=prettyDT();if(!p)return;document.getElementById('t
 
 // ---------------- Routing (real distance + alternatives) ----------------
 const MODES={
-  foot:{mode:'Walking',ic:'🚶',speed:5,kcalPerKm:50},
-  bike:{mode:'Cycling',ic:'🚲',speed:16,kcalPerKm:30},
-  driving:{mode:'Drive / Bus',ic:'🚗',speed:40,kcalPerKm:3}
+  foot:{mode:'Walking',ic:'🚶',speed:5},
+  bike:{mode:'Cycling',ic:'🚲',speed:16},
+  scooter:{mode:'E-scooter',ic:'🛴',speed:18},
+  transit:{mode:'Public transport',ic:'🚌',speed:24},
+  driving:{mode:'Drive',ic:'🚗',speed:40}
 };
-const CAR_CO2=0.192;
-let selectedMode='driving';
+const CAR_CO2=0.192; // kg CO₂ per km — petrol car baseline
+const FLG={foot:'w',bike:'b',scooter:'b',transit:'r',driving:'d'};   // Google dirflg
+const GMODE={foot:'walking',bike:'bicycling',scooter:'bicycling',transit:'transit',driving:'driving'};
+let selectedMode='transit';
+let scootAvail=0;
+// Per-mode calories, emissions & notes. Transit credits the walking legs to/from stops.
+function modeMetrics(key,km){
+  let kcal,emit,note='';
+  if(key==='foot'){kcal=km*55;emit=0;}
+  else if(key==='bike'){kcal=km*32;emit=0;}
+  else if(key==='scooter'){kcal=km*8;emit=0.018;}                 // light effort, electric
+  else if(key==='transit'){const walk=Math.min(1.8,0.12*km+0.4);kcal=walk*60;emit=0.068;note=walk.toFixed(1)+' km walk to/from stops';}
+  else {kcal=km*3;emit=CAR_CO2;}                                   // driving
+  return {kcal:Math.round(kcal),co2saved:Math.max(0,km*(CAR_CO2-emit)),note};
+}
+function durationFor(key,km){const base=km/MODES[key].speed*3600;return key==='transit'?base+(km>2?360:180):base;}
 let fromPt=null,toPt=null;
 let baseRoutes=[],routeData=[],selRoute=0;
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.round((s%3600)/60);return h?`${h} h ${m} min`:`${m} min`}
@@ -503,8 +524,9 @@ async function findRoutes(){
   toPt=destCoords||await geocodeOne(destInput);
   if(!toPt){toast('Could not locate that destination');btn.textContent='Find Routes';btn.disabled=false;return}
   destCoords=toPt;
-  // Google Maps directions from current location -> destination
-  setSrc('gmapRoutes',gmapDir(fromPt,toPt));
+  // Google Maps directions from current location -> destination (mode-aware)
+  scootAvail=2+Math.floor(Math.random()*6);
+  setSrc('gmapRoutes',gmapDir(fromPt,toPt,FLG[selectedMode]));
   let summary=(document.getElementById('curLoc').value.replace(/^📍\s*/,'')||'My location')+' → '+destInput;
   if(timing!=='now'){const p=prettyDT();if(p)summary+=' · '+(timing==='depart'?'Depart ':'Arrive ')+p}
   document.getElementById('routeSummary').textContent=summary;
@@ -526,10 +548,12 @@ async function osrmBase(from,to){
 function setMode(m){selectedMode=m;document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));if(baseRoutes.length)loadMode(m)}
 function loadMode(m){
   const M=MODES[m];
+  if(fromPt&&toPt)setSrc('gmapRoutes',gmapDir(fromPt,toPt,FLG[m]));
   routeData=baseRoutes.map(b=>{
-    const durSec=(m==='driving'&&b.driveSec)?b.driveSec:(b.km/M.speed*3600);
+    const durSec=(m==='driving'&&b.driveSec)?b.driveSec:durationFor(m,b.km);
+    const mt=modeMetrics(m,b.km);
     return {modeKey:m,mode:M.mode,ic:M.ic,km:b.km,geom:b.geom,durSec,dur:fmtDur(durSec),
-            kcal:Math.round(b.km*M.kcalPerKm),co2saved:(m==='driving'?0:b.km*CAR_CO2)};
+            kcal:mt.kcal,co2saved:mt.co2saved,note:mt.note};
   }).sort((a,b)=>a.durSec-b.durSec);
   selRoute=0;renderRoutes();
 }
@@ -540,7 +564,10 @@ function renderRoutes(){
     const eco=r.co2saved>0
       ? `<span class="badge">🌱 ${r.co2saved.toFixed(1)} kg CO₂ saved vs car</span>`
       : `<span class="badge" style="background:#fdecec;color:#d33">🚗 ${(r.km*CAR_CO2).toFixed(1)} kg CO₂ emitted</span>`;
-    el.innerHTML=`<div class="modes">${r.ic}</div><div class="info"><div class="dur">${r.dur} <span style="color:var(--muted);font-weight:600;font-size:13px">· ${r.km.toFixed(1)} km</span></div><div class="meta">${i===0?'⚡ Fastest route':'Alternative '+i} · ${r.mode}</div>${eco}</div><span class="tag">${r.kcal} kcal</span>`;
+    let meta=`${i===0?'⚡ Fastest route':'Alternative '+i} · ${r.mode}`;
+    if(r.modeKey==='transit'&&r.note)meta+=` · 🚶 ${r.note}`;
+    const scootBadge=r.modeKey==='scooter'?`<span class="badge" style="background:#e6f9f4;color:#0d9488">🛴 ${scootAvail} e-scooters available now</span>`:'';
+    el.innerHTML=`<div class="modes">${r.ic}</div><div class="info"><div class="dur">${r.dur} <span style="color:var(--muted);font-weight:600;font-size:13px">· ${r.km.toFixed(1)} km</span></div><div class="meta">${meta}</div>${eco}${scootBadge}</div><span class="tag">${r.kcal} kcal</span>`;
     el.onclick=()=>{selRoute=i;renderRoutes()};
     list.appendChild(el);
   });
@@ -551,7 +578,7 @@ function renderRoutes(){
 }
 function openInGMaps(){
   if(!toPt){toast('Find a route first');return}
-  const mode={foot:'walking',bike:'bicycling',driving:'driving'}[selectedMode];
+  const mode=GMODE[selectedMode]||'driving';
   const url=`https://www.google.com/maps/dir/?api=1&origin=${fromPt[0]},${fromPt[1]}&destination=${toPt[0]},${toPt[1]}&travelmode=${mode}`;
   window.open(url,'_blank');
 }
